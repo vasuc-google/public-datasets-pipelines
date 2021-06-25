@@ -37,6 +37,7 @@ with DAG(
         task_id="austin_bikeshare_trips_transform_csv",
         name="bikeshare_trips",
         namespace="default",
+        image_pull_policy="Always",
         image="{{ var.json.austin_bikeshare_trips.container_registry.run_csv_transform_kub }}",
         env_vars={
             "SOURCE_URL": "https://data.austintexas.gov/api/views/tyfh-5r8s/rows.csv",

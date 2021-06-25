@@ -22,8 +22,7 @@ import re
 from datetime import datetime
 
 import requests
-
-# import vaex
+import vaex
 from google.cloud import storage
 
 
@@ -37,27 +36,27 @@ def main(
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
 
-    # # open the input file
-    # logging.info(f"Opening file {source_file}")
-    # df = vaex.open(str(source_file))
+    # open the input file
+    logging.info(f"Opening file {source_file}")
+    df = vaex.open(str(source_file))
 
-    # # steps in the pipeline
-    # logging.info(f"Transforming.. {source_file}")
-    # rename_headers(df)
-    # remove_columns(df)
-    # convert_dt_values(df)
-    # replace_values_regex(df)
-    # filter_null_rows(df)
+    # steps in the pipeline
+    logging.info(f"Transforming.. {source_file}")
+    rename_headers(df)
+    df = remove_columns(df)
 
-    # # save to output file
-    # logging.info(f"Saving to output file.. {target_file}")
-    # try:
-    #     save_to_new_file(df, file_path=str(target_file))
-    # except Exception as e:
-    #     logging.error(f"Error saving output file: {e}.")
+    convert_dt_values(df)
+    replace_values_regex(df)
+    filter_null_rows(df)
+
+    # save to output file
+    logging.info(f"Saving to output file.. {target_file}")
+    try:
+        save_to_new_file(df, file_path=str(target_file))
+    except Exception as e:
+        logging.error(f"Error saving output file: {e}.")
     logging.info("..Done!")
 
-    # upload to GCS
     logging.info(
         f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
     )
@@ -94,6 +93,8 @@ def remove_columns(df):
 
     for rm_name in header_names:
         df = df.drop(rm_name)
+
+    return df
 
 
 def convert_dt_format(dt_str):
