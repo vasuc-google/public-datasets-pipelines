@@ -61,6 +61,9 @@ dag:
         # Set the environment variables you need initialized in the container. Use these as input variables for the script your container is expected to perform.
         env_vars:
           SOURCE_URL: "ftp://ftp.ncdc.noaa.gov/pub/data/ghcn/daily/ghcnd-countries.txt"
+          FTP_HOST: "ftp.ncdc.noaa.gov"
+          FTP_DIR: "/pub/data/ghcn/daily/"
+          FTP_FILENAME: "ghcnd-countries.txt"
           SOURCE_FILE: "/custom/data.csv"
           TARGET_FILE: "/custom/data_output.csv"
           TARGET_GCS_BUCKET: "{{ var.json.shared.composer_bucket }}"

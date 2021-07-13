@@ -20,10 +20,10 @@ dataset:
   name: ghcn_d
 
   # A friendly, human-readable name of the dataset
-  friendly_name: "GHCN_D Countries dataset"
+  friendly_name: GHCN_D_Countries
 
   # A short, descriptive summary of the dataset.
-  description: "GHCN_D Countries dataset"
+  description: GHCN_D_Countries
 
   # A list of sources the dataset is derived from, using the YAML list syntax.
   dataset_sources: ~
