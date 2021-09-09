@@ -38,12 +38,20 @@ def main(
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
 
-    logging.info(f"Opening file {source_file}")
-
-    df=pd.read_csv(str({source_file}), sep="\t")
+    if pipeline == "country_names_area":
+        df = pd.read_csv(str(source_file))
+    else:
+        df_list=[]
+        for i in range(len({source_file})):
+            df=pd.read_csv("./files/"+{source_file}[i]+".csv")
+            df_list.append(df)
+        df1= df_list[0]
+        df2=df_list[1]
+        df=pd.merge(df1,df2, how="left", on=["country_code"])
 
     logging.info(f"Transforming.. {source_file}")
-    trim_whitespaces(df)
+    filter_headers(df)
+    search_replace(df)
     logging.info("Transform: Reordering headers..")
     df = df[headers]
 
@@ -59,13 +67,18 @@ def main(
      )
     upload_file_to_gcs(target_file, target_gcs_bucket, target_gcs_path)
 
-def trim_whitespaces(df):
-    cols = ["series_id","series_title","footnote_codes"]
-    df[cols] = df[cols].apply(lambda x: x.str.strip())
-    return df[cols]
+def filter_headers(df):
+    cols=["country_area"]
+    df=df.loc[:, cols]
+    return df
+
+def search_replace(df):
+    df["sex"]=df['Sex'].replace({3:'Female',2:'Male'},inplace=True)
+    return df
 
 def save_to_new_file(df, file_path):
     df.export_csv(file_path)
+
 
 def download_file(source_url: str, source_file: pathlib.Path):
     logging.info(f"Downloading {source_url} into {source_file}")

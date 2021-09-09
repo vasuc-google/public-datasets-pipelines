@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import pathlib
+import typing
 
 import pandas as pd
 import requests
@@ -27,66 +29,23 @@ def main(
     target_file: pathlib.Path,
     target_gcs_bucket: str,
     target_gcs_path: str,
+    headers:typing.List[str],
 ):
 
     logging.info("creating 'files' folder")
     pathlib.Path("./files").mkdir(parents=True, exist_ok=True)
-    
+
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
 
     logging.info(f"Opening file {source_file}")
-   
+
     df=pd.read_csv(str({source_file}), sep="\t")
 
     logging.info(f"Transforming.. {source_file}")
     trim_whitespaces(df)
     logging.info("Transform: Reordering headers..")
-    df = df[    
-        [
-            "series_id",
-            "lfst_code",
-            "periodicity_code",
-            "series_title",
-            "absn_code",
-            "activity_code",
-            "ages_code",
-            "class_code",
-            "duration_code",
-            "education_code",
-            "entr_code"
-            "expr_code",
-            "hheader_code",
-            "hour_code",
-            "indy_code",
-            "jdes_code",
-            "look_code",
-            "mari_code",
-            "mjhs_code",
-            "occupation_code",
-            "orig_code",
-            "pcts_code"
-            "race_code",
-            "rjnw_code",
-            "rnlf_code",
-            "rwns_code",
-            "seek_code",
-            "sexs_code",
-            "tdat_code",
-            "vets_code",
-            "wkst_code",
-            "born_code",
-            "chld_code"
-            "disa_code",
-            "seasonal",
-            "footnote_codes",
-            "begin_year",
-            "begin_period",
-            "end_year",
-            "end_period",
-            "cert_code"
-        ]
-    ]
+    ddf = df[headers]
 
     logging.info(f"Saving to output file.. {target_file}")
     try:
@@ -135,4 +94,5 @@ if __name__ == "__main__":
         target_file=pathlib.Path(os.environ["TARGET_FILE"]).expanduser(),
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
+        headers=json.loads(os.environ["CSV_HEADERS"]),
     )

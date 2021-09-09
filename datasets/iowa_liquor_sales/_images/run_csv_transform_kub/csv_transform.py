@@ -17,8 +17,10 @@ import logging
 import os
 import pathlib
 import typing
+from datetime import datetime
 
 import pandas as pd
+from pandas.core.indexes.base import Index
 import requests
 from google.cloud import storage
 
@@ -38,13 +40,11 @@ def main(
 
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
-
-    logging.info(f"Opening file {source_file}")
-    df = pd.read_csv(str(source_file),compression='gzip')
+    df = pd.read_csv(str(source_file))
 
     logging.info(f"Transforming.. {source_file}")
-    rename_headers(df,rename_mappings)
-
+    rename_headers(df, rename_mappings)
+    convert_dt_values(df)
     logging.info("Transform: Reordering headers..")
     df = df[headers]
 
@@ -55,7 +55,6 @@ def main(
         logging.error(f"Error saving output file: {e}.")
     logging.info("..Done!")
 
-
     logging.info(
         f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
      )
@@ -65,8 +64,25 @@ def main(
 def rename_headers(df, rename_mappings:dict):
     df=df.rename(columns=rename_mappings, inplace=True)
 
+def convert_dt_format(dt_str):
+    if dt_str is None or len(dt_str) == 0:
+        return dt_str
+    else:
+        if len(dt_str) == 10:
+            return datetime.strptime(dt_str, "%m/%d/%Y").strftime(
+                "%Y-%m-%d"
+            )
+
+def convert_dt_values(df):
+    dt_cols = [
+        "date"
+    ]
+
+    for dt_col in dt_cols:
+        df[dt_col] = df[dt_col].apply(convert_dt_format)
+
 def save_to_new_file(df, file_path):
-    df.export_csv(file_path)
+    df.to_csv(file_path, index=False)
 
 
 def download_file(source_url: str, source_file: pathlib.Path):
@@ -97,5 +113,5 @@ if __name__ == "__main__":
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
         headers=json.loads(os.environ["CSV_HEADERS"]),
-        rename_mappings=json.load(os.environ("RENAME_MAPPINGS"))
+        rename_mappings=json.loads(os.environ["RENAME_MAPPINGS"])
     )

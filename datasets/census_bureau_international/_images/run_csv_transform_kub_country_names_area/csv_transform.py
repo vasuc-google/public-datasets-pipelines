@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import pathlib
-from datetime import datetime
+import typing
 
 import pandas as pd
 import requests
@@ -28,37 +29,20 @@ def main(
     target_file: pathlib.Path,
     target_gcs_bucket: str,
     target_gcs_path: str,
+    headers:typing.List[str],
 ):
 
     logging.info("creating 'files' folder")
     pathlib.Path("./files").mkdir(parents=True, exist_ok=True)
-    
+
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
+    df = pd.read_csv(str(source_file))
 
-    # open the input file
-    logging.info(f"Opening file {source_file}")
-    # client = storage.Client()
-    # # get the bucke
-    # bucket = client.get_bucket("nttcomware")
-    # # get the blob object
-    # blob_name = "test.csv.gz"
-    # blob = bucket.get_blob(blob_name)
-    df = pd.read_csv(str(source_file), compression='gzip')
-
-
-    # steps in the pipeline
     logging.info(f"Transforming.. {source_file}")
     logging.info("Transform: Reordering headers..")
-    df = df[    
-        [
-            "country_code",
-            "country_name",
-            "country_area"
-        ]
-    ]
+    df = df[headers]
 
-    # save to output file
     logging.info(f"Saving to output file.. {target_file}")
     try:
         save_to_new_file(df, file_path=str(target_file))
@@ -66,7 +50,6 @@ def main(
         logging.error(f"Error saving output file: {e}.")
     logging.info("..Done!")
 
-    # upload to GCS
     logging.info(
         f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
      )
@@ -74,6 +57,7 @@ def main(
 
 def save_to_new_file(df, file_path):
     df.export_csv(file_path)
+
 
 def download_file(source_url: str, source_file: pathlib.Path):
     logging.info(f"Downloading {source_url} into {source_file}")
@@ -102,4 +86,5 @@ if __name__ == "__main__":
         target_file=pathlib.Path(os.environ["TARGET_FILE"]).expanduser(),
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
+        headers=json.loads(os.environ["CSV_HEADERS"]),
     )

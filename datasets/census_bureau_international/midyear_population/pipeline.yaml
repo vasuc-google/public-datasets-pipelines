@@ -16,15 +16,14 @@
 resources:
 
   - type: bigquery_table
-    # Required Properties:
-    table_id: country_names_area
 
-    # Description of the table
-    description: "country_names_area dataset"
+    table_id: midyear_population
+
+    description: "Midyear_Population dataset"
 dag:
-  airflow_version: 2
+  airflow_version: 1
   initialize:
-    dag_id: country_names_area
+    dag_id: midyear_population
     default_args:
       owner: "Google"
 
@@ -39,18 +38,16 @@ dag:
   tasks:
 
     - operator: "KubernetesPodOperator"
-
-      # Task description
       description: "Run CSV transform within kubernetes pod"
 
       args:
 
-        task_id: "census_bureau_international_country_names_area_transform_csv"
+        task_id: "midyear_population_transform_csv"
 
         startup_timeout_seconds: 600
 
         # The name of the pod in which the task will run. This will be used (plus a random suffix) to generate a pod id
-        name: "country_names_area"
+        name: "midyear_population"
 
         # The namespace to run within Kubernetes. Always set its value to "default" because we follow the guideline that KubernetesPodOperator will only be used for very light workloads, i.e. use the Cloud Composer environment's resources without starving other pipelines.
         namespace: "default"
@@ -58,36 +55,36 @@ dag:
         image_pull_policy: "Always"
 
         # Docker images will be built and pushed to GCR by default whenever the `scripts/generate_dag.py` is run. To skip building and pushing images, use the optional `--skip-builds` flag.
-        image: "{{ var.json.census_bureau_international.container_registry.run_csv_transform_kub_country_names_area}}"
+        image: "{{ var.json.census_bureau_international.container_registry.run_csv_transform_kub }}"
 
         # Set the environment variables you need initialized in the container. Use these as input variables for the script your container is expected to perform.
         env_vars:
-          SOURCE_URL: "https://storage.cloud.google.com/pdp-feeds-staging/Census/idbzip/IDBextCTYS.csv"
-          SOURCE_FILE: "files/data.csv"
+          SOURCE_URL: ["https://storage.cloud.google.com/pdp-feeds-staging/Census/idbzip/IDBext001.csv","https://storage.cloud.google.com/pdp-feeds-staging/Census/idbzip/IDBextCTYS.csv"]
+          SOURCE_FILE: ["files/data1.csv", "files/data2.csv"]
           TARGET_FILE: "files/data_output.csv"
           TARGET_GCS_BUCKET: "{{ var.json.shared.composer_bucket }}"
-          TARGET_GCS_PATH: "data/census_bureau_international/country_names_area/data_output.csv"
+          TARGET_GCS_PATH: "data/census_bureau_international/midyear_population/data_output.csv"
           CSV_HEADERS: >-
-            ["country_code","country_name","country_area"]
+            ["country_code","country_name","year","midyear_population"]
 
         # Set resource limits for the pod here. For resource units in Kubernetes, see https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#resource-units-in-kubernetes
         resources:
           limit_memory: "4G"
-          limit_cpu: "1"
+          limit_cpu: "2"
 
     - operator: "GoogleCloudStorageToBigQueryOperator"
       description: "Task to load CSV data to a BigQuery table"
 
       args:
-        task_id: "load_census_bureau_international_country_names_area_to_bq"
+        task_id: "load_midyear_population_to_bq"
 
       # The GCS bucket where the CSV file is located in.
         bucket: "{{ var.json.shared.composer_bucket }}"
 
       # The GCS object path for the CSV file
-        source_objects: ["data/census_bureau_international/country_names_area/data_output.csv"]
+        source_objects: ["data/census_bureau_international/midyear_population/data_output.csv"]
         source_format: "CSV"
-        destination_project_dataset_table: "census_bureau_international.country_names_area"
+        destination_project_dataset_table: "census_bureau_international.midyear_population"
 
       # Use this if your CSV file contains a header row
         skip_leading_rows: 1
@@ -104,13 +101,16 @@ dag:
         schema_fields:
           - name: "country_code"
             type: "STRING"
-            mode: "required"
+            mode: "REQUIRED"
           - name: "country_name"
             type: "STRING"
             mode: "NULLABLE"
-          - name: "country_area"
-            type: "FLOAT"
+          - name: "year"
+            type: "INTEGER"
+            mode: "NULLABLE"
+          - name: "midyear_population"
+            type: "INTEGER"
             mode: "NULLABLE"
 
   graph_paths:
-    - "census_bureau_international_country_names_area_transform_csv >> load_census_bureau_international_country_names_area_to_bq"
+    - "midyear_population_transform_csv >> load_midyear_population_to_bq"

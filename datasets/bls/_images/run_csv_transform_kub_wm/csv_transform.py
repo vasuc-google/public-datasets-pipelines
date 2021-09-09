@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import pathlib
+import typing
 
 import pandas as pd
 import requests
@@ -27,11 +29,12 @@ def main(
     target_file: pathlib.Path,
     target_gcs_bucket: str,
     target_gcs_path: str,
+    headers:typing.List[str],
 ):
 
     logging.info("creating 'files' folder")
     pathlib.Path("./files").mkdir(parents=True, exist_ok=True)
-    
+
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
 
@@ -48,19 +51,8 @@ def main(
     filter_headers(df)
     trim_whitespaces(df)
     logging.info("Transform: Reordering headers..")
-    df = df[    
-        [
-            "series_id",
-            "year",
-            "period",
-            "value",
-            "footnote_codes",
-            "date"
-            "series_title"
-        ]
-    ]
+    df = df[headers]
 
-    
     logging.info(f"Saving to output file.. {target_file}")
     try:
         save_to_new_file(df, file_path=str(target_file))
@@ -113,4 +105,5 @@ if __name__ == "__main__":
         target_file=pathlib.Path(os.environ["TARGET_FILE"]).expanduser(),
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
+        headers=json.loads(os.environ["CSV_HEADERS"]),
     )
