@@ -26,12 +26,10 @@ dag:
     dag_id: midyear_population_5yr_age_sex
     default_args:
       owner: "Google"
-
-      # When set to True, keeps a task from getting triggered if the previous schedule for the task hasn’t succeeded
       depends_on_past: False
       start_date: '2021-03-01'
     max_active_runs: 1
-    schedule_interval: "@daily"  # run once a week at Sunday 12am
+    schedule_interval: "@daily"
     catchup: False
     default_view: graph
 
@@ -39,7 +37,6 @@ dag:
 
     - operator: "KubernetesPodOperator"
 
-      # Task description
       description: "Run CSV transform within kubernetes pod"
 
       args:
@@ -48,11 +45,19 @@ dag:
 
         startup_timeout_seconds: 600
 
-        # The name of the pod in which the task will run. This will be used (plus a random suffix) to generate a pod id
         name: "midyear_population_5yr_age_sex"
 
-        # The namespace to run within Kubernetes. Always set its value to "default" because we follow the guideline that KubernetesPodOperator will only be used for very light workloads, i.e. use the Cloud Composer environment's resources without starving other pipelines.
         namespace: "default"
+
+         affinity:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: cloud.google.com/gke-nodepool
+                      operator: In
+                      values:
+                        - "pool-e2-standard-4"
 
         image_pull_policy: "Always"
 
@@ -64,7 +69,7 @@ dag:
           SOURCE_URL: ["https://storage.cloud.google.com/pdp-feeds-staging/Census/idbzip/IDBext094.csv","https://storage.cloud.google.com/pdp-feeds-staging/Census/idbzip/IDBextCTYS.csv"]
           SOURCE_FILE: ["files/data1.csv", "files/data2.csv"]
           TARGET_FILE: "files/data_output.csv"
-          TARGET_GCS_BUCKET: "{{ var.json.shared.composer_bucket }}"
+          TARGET_GCS_BUCKET: "{{ var.value.composer_bucket }}"
           TARGET_GCS_PATH: "data/census_bureau_international/midyear_population_5yr_age_sex/data_output.csv"
           CSV_HEADERS: >-
             ["country_code","country_name","year","total_flag","starting_age","age_group_indicator","ending_age","midyear_population","midyear_population_male","midyear_population_female"]
@@ -81,7 +86,7 @@ dag:
         task_id: "load_midyear_population_5yr_age_sex_to_bq"
 
       # The GCS bucket where the CSV file is located in.
-        bucket: "{{ var.json.shared.composer_bucket }}"
+        bucket: "{{ var.value.composer_bucket }}"
 
       # The GCS object path for the CSV file
         source_objects: ["data/census_bureau_international/midyear_population_5yr_age_sex/data_output.csv"]

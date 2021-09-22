@@ -12,15 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import logging
 import os
 import pathlib
-import typing
+import subprocess
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
-from pandas.core.indexes.base import Index
 import requests
 from google.cloud import storage
 
@@ -29,42 +28,160 @@ def main(
     source_url: str,
     source_file: pathlib.Path,
     target_file: pathlib.Path,
+    chunksize: str,
     target_gcs_bucket: str,
     target_gcs_path: str,
-    headers:typing.List[str],
-    rename_mappings:dict,
-):
-
+)-> None:
+    logging.info(" sales pipeline process started")
     logging.info("creating 'files' folder")
     pathlib.Path("./files").mkdir(parents=True, exist_ok=True)
 
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
-    df = pd.read_csv(str(source_file))
 
-    logging.info(f"Transforming.. {source_file}")
-    rename_headers(df, rename_mappings)
+    chunksz = int(chunksize)
+
+    dtypes = {
+        "Invoice/Item Number": np.str_,
+        "Date": np.str_,
+        "Store Number": np.str_,
+        "Store Name": np.str_,
+        "Address": np.str_,
+        "City": np.str_,
+        "Zip Code": np.str_,
+        "Store Location": np.str_,
+        "County Number": np.str_,
+        "County": np.str_,
+        "Category": np.str_,
+        "Category Name": np.str_,
+        "Vendor Number": np.str_,
+        "Vendor Name": np.str_,
+        "Item Number": np.str_,
+        "Item Description": np.str_,
+        "Pack": np.int_,
+        "Bottle Volume (ml)": np.int_,
+        "State Bottle Cost": np.float64,
+        "State Bottle Retail": np.float64,
+        "Bottles Sold": np.int_,
+        "Sale (Dollars)": np.float64,
+        "Volume Sold (Liters)": np.float64,
+        "Volume Sold (Gallons)": np.float64,
+    }
+    parse_dates = [
+        "Date"
+        ]
+    logging.info(f"reading csv file {source_url}")
+    with pd.read_csv(
+        source_file,
+        engine="python",
+        encoding="utf-8",
+        quotechar='"',
+        chunksize=chunksz,
+    ) as reader:
+        for chunk_number, chunk in enumerate(reader):
+            logging.info(f"Processing batch {chunk_number}")
+            target_file_batch = str(target_file).replace(
+                ".csv", "-" + str(chunk_number) + ".csv"
+            )
+            df = pd.DataFrame()
+            df = pd.concat([df, chunk])
+            processChunk(df, target_file_batch)
+
+            logging.info(f"Appending batch {chunk_number} to {target_file}")
+            if chunk_number == 0:
+                subprocess.run(["cp", target_file_batch, target_file])
+            else:
+                subprocess.check_call(f"sed -i '1d' {target_file_batch}", shell=True)
+                subprocess.check_call(
+                    f"cat {target_file_batch} >> {target_file}", shell=True
+                )
+            subprocess.run(["rm", target_file_batch])
+
+    logging.info(
+        f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
+    )
+    upload_file_to_gcs(target_file, target_gcs_bucket, target_gcs_path)
+
+
+def processChunk(df: pd.DataFrame, target_file_batch: str) -> None:
+
+
+    logging.info("Renaming Headers")
+    rename_headers(df)
+
+    logging.info("Convert Date Format")
     convert_dt_values(df)
-    logging.info("Transform: Reordering headers..")
-    df = df[headers]
 
-    logging.info(f"Saving to output file.. {target_file}")
+    logging.info("Reordering headers..")
+    df = df[
+        [
+            "invoice_and_item_number",
+            "date",
+            "store_number",
+            "store_name",
+            "address",
+            "city",
+            "zip_code",
+            "store_location",
+            "county_number",
+            "county",
+            "category",
+            "category_name",
+            "vendor_number",
+            "vendor_name",
+            "item_number",
+            "item_description",
+            "pack",
+            "bottle_volume_ml",
+            "state_bottle_cost",
+            "state_bottle_retail",
+            "bottles_sold",
+            "sale_dollars",
+            "volume_sold_liters",
+            "volume_sold_gallons",
+        ]
+    ]
+
+    df['county_number'] = df['county_number'].astype('Int64')
+
+    logging.info(f"Saving to output file.. {target_file_batch}")
     try:
-        save_to_new_file(df, file_path=str(target_file))
+        save_to_new_file(df, file_path=str(target_file_batch))
     except Exception as e:
         logging.error(f"Error saving output file: {e}.")
     logging.info("..Done!")
 
-    logging.info(
-        f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
-     )
-    upload_file_to_gcs(target_file, target_gcs_bucket, target_gcs_path)
 
+def rename_headers(df: pd.DataFrame) -> None:
+    header_names = {
+        "Invoice/Item Number": "invoice_and_item_number",
+        "Date": "date",
+        "Store Number": "store_number",
+        "Store Name": "store_name",
+        "Address": "address",
+        "City": "city",
+        "Zip Code": "zip_code",
+        "Store Location": "store_location",
+        "County Number": "county_number",
+        "County": "county",
+        "Category": "category",
+        "Category Name": "category_name",
+        "Vendor Number": "vendor_number",
+        "Vendor Name": "vendor_name",
+        "Item Number": "item_number",
+        "Item Description": "item_description",
+        "Pack": "pack",
+        "Bottle Volume (ml)": "bottle_volume_ml",
+        "State Bottle Cost": "state_bottle_cost",
+        "State Bottle Retail": "state_bottle_retail",
+        "Bottles Sold": "bottles_sold",
+        "Sale (Dollars)": "sale_dollars",
+        "Volume Sold (Liters)": "volume_sold_liters",
+        "Volume Sold (Gallons)": "volume_sold_gallons",
+    }
+    df = df.rename(columns=header_names, inplace=True)
 
-def rename_headers(df, rename_mappings:dict):
-    df=df.rename(columns=rename_mappings, inplace=True)
-
-def convert_dt_format(dt_str):
+def convert_dt_format(dt_str: str)-> str:
     if dt_str is None or len(dt_str) == 0:
         return dt_str
     else:
@@ -78,14 +195,11 @@ def convert_dt_values(df):
         "date"
     ]
 
-    for dt_col in dt_cols:
-        df[dt_col] = df[dt_col].apply(convert_dt_format)
-
-def save_to_new_file(df, file_path):
+def save_to_new_file(df, file_path) -> None:
     df.to_csv(file_path, index=False)
 
 
-def download_file(source_url: str, source_file: pathlib.Path):
+def download_file(source_url: str, source_file: pathlib.Path) -> None:
     logging.info(f"Downloading {source_url} into {source_file}")
     r = requests.get(source_url, stream=True)
     if r.status_code == 200:
@@ -110,8 +224,8 @@ if __name__ == "__main__":
         source_url=os.environ["SOURCE_URL"],
         source_file=pathlib.Path(os.environ["SOURCE_FILE"]).expanduser(),
         target_file=pathlib.Path(os.environ["TARGET_FILE"]).expanduser(),
+        chunksize=os.environ["CHUNKSIZE"],
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
-        headers=json.loads(os.environ["CSV_HEADERS"]),
-        rename_mappings=json.loads(os.environ["RENAME_MAPPINGS"])
+
     )

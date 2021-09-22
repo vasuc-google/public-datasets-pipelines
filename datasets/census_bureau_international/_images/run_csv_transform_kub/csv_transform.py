@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import json
 import logging
 import os
@@ -24,12 +25,13 @@ from google.cloud import storage
 
 
 def main(
-    source_url: str,
+    source_url:typing.List[str],
     source_file: pathlib.Path,
     target_file: pathlib.Path,
     target_gcs_bucket: str,
     target_gcs_path: str,
     headers:typing.List[str],
+    pipeline_name: str,
 ):
 
     logging.info("creating 'files' folder")
@@ -38,20 +40,25 @@ def main(
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
 
-    if pipeline == "country_names_area":
-        df = pd.read_csv(str(source_file))
-    else:
-        df_list=[]
-        for i in range(len({source_file})):
-            df=pd.read_csv("./files/"+{source_file}[i]+".csv")
-            df_list.append(df)
-        df1= df_list[0]
-        df2=df_list[1]
-        df=pd.merge(df1,df2, how="left", on=["country_code"])
+    logging.info(f"reading the file {source_url}")
+    path=r"./files"
+    csv_files=glob.glob(path+"/*.csv")
+    df_list=[]
+    for file in csv_files:
+        df=pd.read_csv(file)
+        df.list.append(df)
+    df1= df_list[0]
+    df2=df_list[1]
+    df=pd.merge(df1,df2, how="left", on=["country_code"])
 
     logging.info(f"Transforming.. {source_file}")
     filter_headers(df)
-    search_replace(df)
+
+    logging.info(f"replacing the values.. {source_file}")
+    if pipeline_name == "midyear_population_age_sex":
+        search_replace(df)
+    else:
+        df=df
     logging.info("Transform: Reordering headers..")
     df = df[headers]
 
@@ -80,7 +87,7 @@ def save_to_new_file(df, file_path):
     df.export_csv(file_path)
 
 
-def download_file(source_url: str, source_file: pathlib.Path):
+def download_file(source_url: typing.List[str], source_file: pathlib.Path) -> None:
     logging.info(f"Downloading {source_url} into {source_file}")
     r = requests.get(source_url, stream=True)
     if r.status_code == 200:
@@ -108,4 +115,5 @@ if __name__ == "__main__":
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
         headers=json.loads(os.environ["CSV_HEADERS"]),
+        pipeline_name=os.environ["PIPELINE_NAME"],
     )

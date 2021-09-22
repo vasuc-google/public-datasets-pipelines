@@ -17,55 +17,91 @@ import logging
 import os
 import pathlib
 import typing
+import subprocess
 
 import pandas as pd
 import requests
 from google.cloud import storage
+from pandas.core.frame import DataFrame
 
 
 def main(
     source_url: str,
     source_file: pathlib.Path,
     target_file: pathlib.Path,
+    chunksize: str,
     target_gcs_bucket: str,
     target_gcs_path: str,
     headers:typing.List[str],
     rename_mappings:dict,
-):
+) -> None:
 
     logging.info("creating 'files' folder")
     pathlib.Path("./files").mkdir(parents=True, exist_ok=True)
 
     logging.info(f"Downloading file {source_url}")
     download_file(source_url, source_file)
-    df = pd.read_csv(str(source_file), compression='gzip')
+    chunksz = int(chunksize)
 
-    logging.info(f"Transforming.. {source_file}")
+    logging.info(f"reading csv file {source_url}")
+    with pd.read_csv(
+        source_file,
+        engine="python",
+        encoding="utf-8",
+        quotechar='"',
+        compression='gzip',
+        chunksize=chunksz,
+    ) as reader:
+        for chunk_number, chunk in enumerate(reader):
+            logging.info(f"Processing batch {chunk_number}")
+            target_file_batch = str(target_file).replace(
+                ".csv", "-" + str(chunk_number) + ".csv"
+            )
+            df = pd.DataFrame()
+            df = pd.concat([df, chunk])
+            processChunk(df, target_file_batch)
+
+            logging.info(f"Appending batch {chunk_number} to {target_file}")
+            if chunk_number == 0:
+                subprocess.run(["cp", target_file_batch, target_file])
+            else:
+                subprocess.check_call(f"sed -i '1d' {target_file_batch}", shell=True)
+                subprocess.check_call(
+                    f"cat {target_file_batch} >> {target_file}", shell=True
+                )
+            subprocess.run(["rm", target_file_batch])
+
+    logging.info(" renaming headers...")
     rename_headers(df, rename_mappings)
     logging.info("Transform: Reordering headers..")
     df = df[headers]
 
-    logging.info(f"Saving to output file.. {target_file}")
+    logging.info(
+        f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
+    )
+    upload_file_to_gcs(target_file, target_gcs_bucket, target_gcs_path)
+
+
+def processChunk(df: pd.DataFrame, target_file_batch: str) -> None:
+
+
+
+
+    logging.info(f"Saving to output file.. {target_file_batch}")
     try:
-        save_to_new_file(df, file_path=str(target_file))
+        save_to_new_file(df, file_path=str(target_file_batch))
     except Exception as e:
         logging.error(f"Error saving output file: {e}.")
     logging.info("..Done!")
 
-    logging.info(
-        f"Uploading output file to.. gs://{target_gcs_bucket}/{target_gcs_path}"
-     )
-    upload_file_to_gcs(target_file, target_gcs_bucket, target_gcs_path)
 
-
-def rename_headers(df, rename_mappings:dict):
+def rename_headers(df: pd.DataFrame, rename_mappings:dict) -> None:
     df=df.rename(columns=rename_mappings, inplace=True)
 
-def save_to_new_file(df, file_path):
-    df.export_csv(file_path)
+def save_to_new_file(df: pd.DataFrame, file_path)-> None:
+    df.to_csv(file_path, index=False)
 
-
-def download_file(source_url: str, source_file: pathlib.Path):
+def download_file(source_url: str, source_file: pathlib.Path)-> None:
     logging.info(f"Downloading {source_url} into {source_file}")
     r = requests.get(source_url, stream=True)
     if r.status_code == 200:
@@ -90,8 +126,9 @@ if __name__ == "__main__":
         source_url=os.environ["SOURCE_URL"],
         source_file=pathlib.Path(os.environ["SOURCE_FILE"]).expanduser(),
         target_file=pathlib.Path(os.environ["TARGET_FILE"]).expanduser(),
+        chunksize=os.environ["CHUNKSIZE"],
         target_gcs_bucket=os.environ["TARGET_GCS_BUCKET"],
         target_gcs_path=os.environ["TARGET_GCS_PATH"],
         headers=json.loads(os.environ["CSV_HEADERS"]),
-        rename_mappings=json.load(os.environ("RENAME_MAPPINGS"))
+        rename_mappings=json.loads(os.environ["RENAME_MAPPINGS"]),
     )

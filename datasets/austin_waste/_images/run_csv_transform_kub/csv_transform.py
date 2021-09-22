@@ -21,9 +21,9 @@ import typing
 from datetime import datetime
 
 import pandas as pd
-from pandas.core.indexes.base import Index
 import requests
 from google.cloud import storage
+from pandas.core.indexes.base import Index
 
 
 def main(
